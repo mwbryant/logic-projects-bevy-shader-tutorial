@@ -225,7 +225,6 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fce306d40a111309ee61d4626efbafccdd46bb80657122c38061fa7264c08e4"
 dependencies = [
- "bevy_dylib",
  "bevy_internal",
 ]
 
@@ -404,15 +403,6 @@ dependencies = [
  "bevy_ecs",
  "bevy_log",
  "bevy_utils",
-]
-
-[[package]]
-name = "bevy_dylib"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bf02ce7a578743cd94cb38dc7a9b405d6058a2317011744371eaa56b4d6e786"
-dependencies = [
- "bevy_internal",
 ]
 
 [[package]]
@@ -718,6 +708,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_shader_tutorial"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy-inspector-egui",
+ "bevy_kira_audio",
+ "rand",
+ "ron",
+ "serde",
+]
+
+[[package]]
 name = "bevy_sprite"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -755,18 +757,6 @@ dependencies = [
  "futures-lite",
  "num_cpus",
  "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "bevy_template"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bevy-inspector-egui",
- "bevy_kira_audio",
- "rand",
- "ron",
- "serde",
 ]
 
 [[package]]
