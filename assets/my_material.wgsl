@@ -12,12 +12,12 @@ struct MyMat {
 };
 
 [[group(1), binding(0)]]
-var texture: texture_2d<f32>;
-[[group(1), binding(1)]]
-var our_sampler: sampler;
-
-[[group(1), binding(2)]]
 var<uniform> uniform_data: MyMat;
+
+[[group(1), binding(1)]]
+var texture: texture_2d<f32>;
+[[group(1), binding(2)]]
+var our_sampler: sampler;
 
 [[stage(fragment)]]
 fn fragment(input: VertexOutput) -> [[location(0)]] vec4<f32> {

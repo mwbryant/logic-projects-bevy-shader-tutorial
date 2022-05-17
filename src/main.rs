@@ -16,8 +16,8 @@ use bevy::{
         render_resource::{
             std140::AsStd140, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
             BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType,
-            BufferBindingType, BufferInitDescriptor, BufferUsages,
-            SamplerBindingType, ShaderStages, TextureSampleType, TextureViewDimension,
+            BufferBindingType, BufferInitDescriptor, BufferUsages, SamplerBindingType,
+            ShaderStages, TextureSampleType, TextureViewDimension,
         },
         renderer::RenderDevice,
     },
@@ -110,22 +110,6 @@ impl Material2d for MyMaterial {
                 BindGroupLayoutEntry {
                     binding: 0,
                     visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Texture {
-                        multisampled: false,
-                        sample_type: TextureSampleType::Float { filterable: true },
-                        view_dimension: TextureViewDimension::D2,
-                    },
-                    count: None,
-                },
-                BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                    count: None,
-                },
-                BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -133,6 +117,22 @@ impl Material2d for MyMaterial {
                             MyMaterialUniformData::std140_size_static() as u64,
                         ),
                     },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: TextureViewDimension::D2,
+                        sample_type: TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
                     count: None,
                 },
             ],
@@ -154,23 +154,10 @@ impl RenderAsset for MyMaterial {
         SRes<RenderAssets<Image>>,
     );
 
-    fn extract_asset(&self) -> MyMaterial {
-        self.clone()
-    }
-
     fn prepare_asset(
         extracted_asset: MyMaterial,
         (render_device, pipeline, images): &mut SystemParamItem<Self::Param>,
     ) -> Result<MyMaterialGPU, PrepareAssetError<MyMaterial>> {
-        let (view, sampler) = if let Some(result) = pipeline
-            .mesh2d_pipeline
-            .get_image_texture(images, &Some(extracted_asset.image.clone()))
-        {
-            result
-        } else {
-            return Err(PrepareAssetError::RetryNextUpdate(extracted_asset));
-        };
-
         let uniform_data = MyMaterialUniformData {
             alpha: extracted_asset.alpha,
             color: extracted_asset.color.as_linear_rgba_f32().into(),
@@ -182,25 +169,38 @@ impl RenderAsset for MyMaterial {
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
+        let (view, sampler) = if let Some(result) = pipeline
+            .mesh2d_pipeline
+            .get_image_texture(images, &Some(extracted_asset.image.clone()))
+        {
+            result
+        } else {
+            return Err(PrepareAssetError::RetryNextUpdate(extracted_asset));
+        };
+
         let bind_group = render_device.create_bind_group(&BindGroupDescriptor {
             label: None,
             layout: &pipeline.material2d_layout,
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: BindingResource::TextureView(view),
+                    resource: buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: BindingResource::Sampler(sampler),
+                    resource: BindingResource::TextureView(view),
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: buffer.as_entire_binding(),
+                    resource: BindingResource::Sampler(sampler),
                 },
             ],
         });
         Ok(MyMaterialGPU { bind_group })
+    }
+
+    fn extract_asset(&self) -> MyMaterial {
+        self.clone()
     }
 }
 
