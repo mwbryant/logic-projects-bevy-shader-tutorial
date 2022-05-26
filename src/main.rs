@@ -2,58 +2,24 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 
-//use bevy::render::render_resource::std140::Std140;
-use bevy::render::render_resource::BufferSize;
-
-use bevy::render::render_resource::std140::Std140;
 use bevy::{
     ecs::system::{lifetimeless::SRes, SystemParamItem},
-    prelude::*,
+    //Specified to not be ambiguos with render_resourse::std140::*
+    prelude::{Vec4, *},
     reflect::TypeUuid,
     render::{
-        camera::ScalingMode,
-        render_asset::{PrepareAssetError, RenderAsset, RenderAssets},
-        render_resource::{
-            std140::AsStd140, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-            BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType,
-            BufferBindingType, BufferInitDescriptor, BufferUsages, SamplerBindingType,
-            ShaderStages, TextureSampleType, TextureViewDimension,
-        },
-        renderer::RenderDevice,
+        camera::ScalingMode, render_asset::*, render_resource::std140::*, render_resource::*,
+        renderer::*, RenderApp, RenderStage,
     },
-    sprite::{Material2d, Material2dPipeline, Material2dPlugin, MaterialMesh2dBundle},
+    sprite::*,
     window::PresentMode,
 };
+
 use bevy_inspector_egui::{WorldInspectorParams, WorldInspectorPlugin};
 
 pub const CLEAR: Color = Color::rgb(0.3, 0.3, 0.3);
 pub const HEIGHT: f32 = 900.0;
 pub const RESOLUTION: f32 = 16.0 / 9.0;
-
-fn main() {
-    App::new()
-        .insert_resource(ClearColor(CLEAR))
-        .insert_resource(WindowDescriptor {
-            width: HEIGHT * RESOLUTION,
-            height: HEIGHT,
-            title: "Bevy Template".to_string(),
-            present_mode: PresentMode::Fifo,
-            resizable: false,
-            ..Default::default()
-        })
-        .add_plugins(DefaultPlugins)
-        .add_plugin(Material2dPlugin::<MyMaterial>::default())
-        .add_startup_system(spawn_quad)
-        .insert_resource(WorldInspectorParams {
-            enabled: false,
-            ..Default::default()
-        })
-        .add_plugin(WorldInspectorPlugin::new())
-        .add_startup_system(spawn_camera)
-        .add_startup_system_to_stage(StartupStage::PreStartup, load_image)
-        .add_system(toggle_inspector)
-        .run();
-}
 
 #[derive(Deref)]
 pub struct Awesome(Handle<Image>);
@@ -66,10 +32,38 @@ struct MyMaterial {
     image: Handle<Image>,
 }
 
-#[derive(Clone, AsStd140)]
-struct MyMaterialUniformData {
-    alpha: f32,
-    color: Vec4,
+fn main() {
+    let mut app = App::new();
+
+    // Add all main world systems/resources
+    app.insert_resource(ClearColor(CLEAR))
+        .insert_resource(WindowDescriptor {
+            width: HEIGHT * RESOLUTION,
+            height: HEIGHT,
+            title: "Bevy Template".to_string(),
+            present_mode: PresentMode::Fifo,
+            resizable: false,
+            ..Default::default()
+        })
+        .add_plugins(DefaultPlugins)
+        .add_startup_system(spawn_camera)
+        .add_plugin(WorldInspectorPlugin::new())
+        .insert_resource(WorldInspectorParams {
+            enabled: false,
+            ..Default::default()
+        })
+        .add_system(toggle_inspector)
+        // Handles rendering our material
+        .add_plugin(Material2dPlugin::<MyMaterial>::default())
+        .add_startup_system_to_stage(StartupStage::PreStartup, load_image)
+        .add_startup_system(spawn_quad);
+
+    // Add all render world systems/resources
+    app.sub_app_mut(RenderApp)
+        .add_system_to_stage(RenderStage::Prepare, prepare_time)
+        .add_system_to_stage(RenderStage::Extract, extract_time);
+
+    app.run();
 }
 
 fn load_image(mut commands: Commands, assets: Res<AssetServer>) {
@@ -94,8 +88,43 @@ fn spawn_quad(
     });
 }
 
+struct ExtractedTime {
+    seconds_since_startup: f32,
+}
+
+fn extract_time(mut commands: Commands, time: Res<Time>) {
+    commands.insert_resource(ExtractedTime {
+        seconds_since_startup: time.seconds_since_startup() as f32,
+    });
+}
+
+fn prepare_time(
+    mut material_assets: ResMut<RenderAssets<MyMaterial>>,
+    time: Res<ExtractedTime>,
+    render_queue: Res<RenderQueue>,
+) {
+    for material in material_assets.values_mut() {
+        material.uniform_data.alpha = time.seconds_since_startup % 1.0;
+        render_queue.write_buffer(
+            &material.buffer,
+            0,
+            material.uniform_data.as_std140().as_bytes(),
+        );
+    }
+}
+
+// Holds the version of our data that can be sent to the graphics card (ie Color -> Vec4)
+#[derive(Clone, AsStd140)]
+struct MyMaterialUniformData {
+    alpha: f32,
+    color: Vec4,
+}
+
+// The PreparedAsset created from our material
 struct MyMaterialGPU {
     bind_group: BindGroup,
+    uniform_data: MyMaterialUniformData,
+    buffer: Buffer,
 }
 
 impl Material2d for MyMaterial {
@@ -107,6 +136,7 @@ impl Material2d for MyMaterial {
         render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: None,
             entries: &[
+                // Our UniformData Buffer
                 BindGroupLayoutEntry {
                     binding: 0,
                     visibility: ShaderStages::FRAGMENT,
@@ -119,6 +149,7 @@ impl Material2d for MyMaterial {
                     },
                     count: None,
                 },
+                // Our Texture binding
                 BindGroupLayoutEntry {
                     binding: 1,
                     visibility: ShaderStages::FRAGMENT,
@@ -129,6 +160,7 @@ impl Material2d for MyMaterial {
                     },
                     count: None,
                 },
+                // The Texture sampler
                 BindGroupLayoutEntry {
                     binding: 2,
                     visibility: ShaderStages::FRAGMENT,
@@ -196,7 +228,11 @@ impl RenderAsset for MyMaterial {
                 },
             ],
         });
-        Ok(MyMaterialGPU { bind_group })
+        Ok(MyMaterialGPU {
+            bind_group,
+            uniform_data,
+            buffer,
+        })
     }
 
     fn extract_asset(&self) -> MyMaterial {
